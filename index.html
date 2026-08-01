@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spasht — Image Upscaler</title>
+<meta name="description" content="Upscale images to 2x, 3x or 4x, right in your browser. No uploads, no API keys, no accounts.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0E8C7F">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Spasht">
+<link rel="icon" href="icons/icon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<style>
+:root{
+  --bg:#F7F5F1; --surface:#FFFFFF; --surface2:#EFEBE3; --ink:#14181A; --muted:#5B6467;
+  --accent:#0E8C7F; --accent-ink:#04211D; --line:#DCD6C9; --focus:#0E8C7F; --danger:#B3452E;
+  --radius:14px; --font-d:"Sora","Segoe UI",system-ui,sans-serif; --font-b:"Inter","Segoe UI",system-ui,sans-serif;
+}
+[data-theme="dark"]{
+  --bg:#12181A; --surface:#1B2225; --surface2:#232B2E; --ink:#EDF2F1; --muted:#93A2A0;
+  --accent:#3DDCC0; --accent-ink:#04211D; --line:#2E383B; --focus:#3DDCC0;
+}
+[data-theme="oled"]{
+  --bg:#000000; --surface:#0A0A0A; --surface2:#121212; --ink:#F2F5F4; --muted:#8A9492;
+  --accent:#33FFDD; --accent-ink:#001512; --line:#1E1E1E; --focus:#33FFDD;
+}
+[data-theme="hc"]{
+  --bg:#000000; --surface:#000000; --surface2:#0D0D0D; --ink:#FFFFFF; --muted:#FFFFFF;
+  --accent:#FFEE00; --accent-ink:#000000; --line:#FFFFFF; --focus:#FFEE00;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0; padding:0;}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--font-b);
+  min-height:100dvh; display:flex; flex-direction:column; transition:background .25s,color .25s;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+h1,h2,.brand{font-family:var(--font-d);}
+header{
+  display:flex; align-items:center; justify-content:space-between; padding:18px 20px;
+  border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:20;
+}
+.brand{font-size:1.15rem; font-weight:700; letter-spacing:.02em; display:flex; align-items:center; gap:8px;}
+.brand svg{flex:none;}
+.brand small{display:block; font-family:var(--font-b); font-weight:400; font-size:.62rem; color:var(--muted); letter-spacing:.14em; text-transform:uppercase; margin-top:1px;}
+.theme-toggle{display:flex; gap:6px; background:var(--surface2); padding:4px; border-radius:999px; border:1px solid var(--line);}
+.theme-toggle button{
+  width:32px; height:32px; border-radius:999px; border:none; cursor:pointer; display:grid; place-items:center;
+  background:transparent; color:var(--muted); font-size:.85rem;
+}
+.theme-toggle button[aria-pressed="true"]{background:var(--accent); color:var(--accent-ink);}
+main{flex:1; width:100%; max-width:760px; margin:0 auto; padding:24px 18px 40px; display:flex; flex-direction:column; align-items:center; gap:22px;}
+.tagline{text-align:center; max-width:520px;}
+.tagline h1{font-size:1.6rem; margin:0 0 6px; letter-spacing:-.01em;}
+.tagline p{margin:0; color:var(--muted); font-size:.92rem; line-height:1.5;}
+.dropzone{
+  width:100%; border:2px dashed var(--line); border-radius:var(--radius); background:var(--surface);
+  padding:38px 20px; text-align:center; cursor:pointer; transition:border-color .2s, background .2s;
+}
+.dropzone.drag{border-color:var(--accent); background:var(--surface2);}
+.dropzone .icon{width:46px; height:46px; margin:0 auto 12px; color:var(--accent);}
+.dropzone strong{display:block; font-size:1rem; margin-bottom:4px;}
+.dropzone span{color:var(--muted); font-size:.82rem;}
+input[type=file]{display:none;}
+.workspace{width:100%; display:none; flex-direction:column; gap:18px;}
+.workspace.active{display:flex;}
+.frame{
+  position:relative; width:100%; border-radius:var(--radius); overflow:hidden; background:var(--surface2);
+  border:1px solid var(--line); aspect-ratio:4/3; touch-action:none;
+}
+.frame canvas{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block;}
+.frame canvas.after{clip-path:inset(0 0 0 50%);}
+.zoom-wrap{position:absolute; inset:0; transform:scale(1); transform-origin:center center; transition:transform .15s ease-out;}
+.zoom-controls{
+  position:absolute; bottom:10px; right:10px; z-index:9; display:flex; align-items:center; gap:2px;
+  background:rgba(0,0,0,.55); border-radius:999px; padding:4px; backdrop-filter:blur(2px);
+}
+.zoom-controls button{
+  width:28px; height:28px; border-radius:999px; border:none; background:transparent; color:#fff; font-size:1rem;
+  cursor:pointer; display:grid; place-items:center; line-height:1;
+}
+.zoom-controls button:disabled{opacity:.35; cursor:default;}
+.zoom-controls span{color:#fff; font-size:.68rem; min-width:38px; text-align:center; font-variant-numeric:tabular-nums;}
+.corner{position:absolute; width:18px; height:18px; border-color:var(--accent); pointer-events:none; z-index:5;}
+.corner.tl{top:8px; left:8px; border-top:2px solid; border-left:2px solid;}
+.corner.tr{top:8px; right:8px; border-top:2px solid; border-right:2px solid;}
+.corner.bl{bottom:8px; left:8px; border-bottom:2px solid; border-left:2px solid;}
+.corner.br{bottom:8px; right:8px; border-bottom:2px solid; border-right:2px solid;}
+.tag{position:absolute; top:10px; font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; background:rgba(0,0,0,.55); color:#fff; padding:3px 8px; border-radius:999px; z-index:6;}
+.tag.before{left:10px;}
+.tag.after{right:10px;}
+.compare-handle{
+  position:absolute; top:0; bottom:0; width:2px; background:var(--accent); left:50%; z-index:7; pointer-events:none;
+}
+.compare-handle::after{
+  content:"⇔"; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:34px; height:34px;
+  background:var(--accent); color:var(--accent-ink); border-radius:999px; display:grid; place-items:center; font-size:.9rem;
+}
+input[type=range]{-webkit-appearance:none; width:100%; height:36px; background:transparent; margin:0; position:relative; z-index:8;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:34px; height:34px; opacity:0;}
+.readout{display:flex; justify-content:space-between; font-size:.78rem; color:var(--muted); font-variant-numeric:tabular-nums;}
+.readout b{color:var(--ink); font-weight:600;}
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:18px; display:flex; flex-direction:column; gap:16px;}
+.row{display:flex; flex-direction:column; gap:8px;}
+.row-label{display:flex; justify-content:space-between; font-size:.8rem; color:var(--muted);}
+.scale-group{display:flex; gap:8px;}
+.scale-group button{
+  flex:1; padding:10px 0; border-radius:10px; border:1px solid var(--line); background:var(--surface2); color:var(--ink);
+  font-weight:600; cursor:pointer; font-size:.9rem;
+}
+.scale-group button[aria-pressed="true"]{background:var(--accent); color:var(--accent-ink); border-color:var(--accent);}
+input[type=range].plain{height:22px;}
+input[type=range].plain::-webkit-slider-runnable-track{height:4px; background:var(--line); border-radius:2px;}
+input[type=range].plain::-webkit-slider-thumb{
+  -webkit-appearance:none; margin-top:-8px; width:20px; height:20px; border-radius:50%; background:var(--accent);
+  opacity:1; border:3px solid var(--surface); box-shadow:0 0 0 1px var(--line);
+}
+.actions{display:flex; gap:10px; flex-wrap:wrap;}
+button.primary, button.ghost{
+  flex:1; min-width:140px; padding:13px 16px; border-radius:10px; font-weight:700; font-size:.92rem; cursor:pointer; border:1px solid transparent;
+}
+button.primary{background:var(--accent); color:var(--accent-ink);}
+button.ghost{background:transparent; border-color:var(--line); color:var(--ink);}
+button:focus-visible, .dropzone:focus-visible, .theme-toggle button:focus-visible{outline:2px solid var(--focus); outline-offset:2px;}
+.hint{font-size:.72rem; color:var(--muted); text-align:center; line-height:1.5;}
+footer{
+  border-top:1px solid var(--line); padding:16px 12px; display:flex; justify-content:center; align-items:center;
+  text-align:center; font-size:.74rem; color:var(--muted);
+}
+@media (min-width:640px){
+  .tagline h1{font-size:1.9rem;}
+  .frame{aspect-ratio:16/10;}
+}
+</style>
+</head>
+<body data-theme="light">
+<header>
+  <div class="brand">
+    <img src="icons/icon-48.png" width="24" height="24" alt="" style="border-radius:6px;">
+    <div>Spasht<small>Image Upscaler</small></div>
+  </div>
+  <div class="theme-toggle" role="group" aria-label="Theme">
+    <button data-theme-btn="light" title="Light" aria-pressed="true">☀</button>
+    <button data-theme-btn="dark" title="Dark">☾</button>
+    <button data-theme-btn="oled" title="OLED true black">●</button>
+    <button data-theme-btn="hc" title="High contrast">◐</button>
+  </div>
+</header>
+
+<main>
+  <div class="tagline">
+    <h1>Sharper images, right here.</h1>
+    <p>Upscale up to 4× with edge-aware resampling and sharpening — entirely in your browser. Nothing is uploaded anywhere.</p>
+  </div>
+
+  <label class="dropzone" id="dropzone" tabindex="0">
+    <svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L7 9m5-5l5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <strong>Tap to choose an image</strong>
+    <span>or drag & drop · JPG, PNG, WebP</span>
+    <input type="file" id="fileInput" accept="image/*">
+  </label>
+
+  <div class="workspace" id="workspace">
+    <div class="frame" id="frame">
+      <span class="tag before">Before</span>
+      <span class="tag after">After</span>
+      <div class="zoom-wrap" id="zoomWrap">
+        <canvas class="before" id="canvasBefore"></canvas>
+        <canvas class="after" id="canvasAfter"></canvas>
+      </div>
+      <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+      <div class="compare-handle" id="handle"></div>
+      <input type="range" id="compareSlider" min="0" max="100" value="50" aria-label="Compare before and after" style="position:absolute; inset:0; height:100%;">
+      <div class="zoom-controls">
+        <button id="zoomOut" aria-label="Zoom out">−</button>
+        <span id="zoomLevel">100%</span>
+        <button id="zoomIn" aria-label="Zoom in">+</button>
+      </div>
+    </div>
+    <div class="readout">
+      <span>Original: <b id="origSize">–</b></span>
+      <span>Upscaled: <b id="newSize">–</b></span>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <div class="row-label"><span>Scale</span></div>
+        <div class="scale-group" id="scaleGroup">
+          <button data-scale="2" aria-pressed="true">2×</button>
+          <button data-scale="3">3×</button>
+          <button data-scale="4">4×</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-label"><span>Sharpen</span><span id="sharpenVal">35%</span></div>
+        <input type="range" class="plain" id="sharpenSlider" min="0" max="100" value="35">
+      </div>
+      <div class="actions">
+        <button class="primary" id="downloadBtn">Download upscaled image</button>
+        <button class="ghost" id="resetBtn">Reset</button>
+      </div>
+      <p class="hint">Processing happens on your device — larger images and higher scales take a moment.</p>
+    </div>
+  </div>
+</main>
+
+<footer>© Manik Roy <span id="year"></span>. All Rights Reserved.</footer>
+
+<script>
+(function(){
+  "use strict";
+  document.getElementById('year').textContent = new Date().getFullYear();
+
+  /* ---------- Theme ---------- */
+  var root = document.body, themeBtns = document.querySelectorAll('[data-theme-btn]');
+  function setTheme(t){
+    root.setAttribute('data-theme', t);
+    themeBtns.forEach(function(b){ b.setAttribute('aria-pressed', b.dataset.themeBtn === t); });
+    try{ localStorage.setItem('spasht-theme', t); }catch(e){}
+  }
+  themeBtns.forEach(function(b){ b.addEventListener('click', function(){ setTheme(b.dataset.themeBtn); }); });
+  var saved = null; try{ saved = localStorage.getItem('spasht-theme'); }catch(e){}
+  if(!saved && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) saved = 'dark';
+  setTheme(saved || 'light');
+
+  /* ---------- Elements ---------- */
+  var dropzone = document.getElementById('dropzone'), fileInput = document.getElementById('fileInput');
+  var workspace = document.getElementById('workspace'), frame = document.getElementById('frame');
+  var cvBefore = document.getElementById('canvasBefore'), cvAfter = document.getElementById('canvasAfter');
+  var slider = document.getElementById('compareSlider'), handle = document.getElementById('handle');
+  var scaleGroup = document.getElementById('scaleGroup'), sharpenSlider = document.getElementById('sharpenSlider'), sharpenVal = document.getElementById('sharpenVal');
+  var origSizeEl = document.getElementById('origSize'), newSizeEl = document.getElementById('newSize');
+  var downloadBtn = document.getElementById('downloadBtn'), resetBtn = document.getElementById('resetBtn');
+  var zoomWrap = document.getElementById('zoomWrap'), zoomIn = document.getElementById('zoomIn'), zoomOut = document.getElementById('zoomOut'), zoomLevelEl = document.getElementById('zoomLevel');
+
+  var sourceImg = null, scale = 2, resultCanvas = null, zoom = 1;
+  var ZOOM_MIN = 1, ZOOM_MAX = 4, ZOOM_STEP = 0.25;
+
+  function applyZoom(){
+    zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+    zoomWrap.style.transform = 'scale(' + zoom + ')';
+    zoomLevelEl.textContent = Math.round(zoom * 100) + '%';
+    zoomOut.disabled = zoom <= ZOOM_MIN;
+    zoomIn.disabled = zoom >= ZOOM_MAX;
+  }
+  zoomIn.addEventListener('click', function(){ zoom += ZOOM_STEP; applyZoom(); });
+  zoomOut.addEventListener('click', function(){ zoom -= ZOOM_STEP; applyZoom(); });
+  applyZoom();
+
+  /* ---------- File intake ---------- */
+  dropzone.addEventListener('click', function(e){ if(e.target !== fileInput) fileInput.click(); });
+  dropzone.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+  fileInput.addEventListener('change', function(){ if(fileInput.files[0]) loadFile(fileInput.files[0]); });
+  ['dragenter','dragover'].forEach(function(ev){ dropzone.addEventListener(ev, function(e){ e.preventDefault(); dropzone.classList.add('drag'); }); });
+  ['dragleave','drop'].forEach(function(ev){ dropzone.addEventListener(ev, function(e){ e.preventDefault(); dropzone.classList.remove('drag'); }); });
+  dropzone.addEventListener('drop', function(e){ var f = e.dataTransfer.files[0]; if(f) loadFile(f); });
+
+  function loadFile(file){
+    if(!file.type.startsWith('image/')) return;
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var img = new Image();
+      img.onload = function(){ sourceImg = img; workspace.classList.add('active'); zoom = 1; applyZoom(); process(); workspace.scrollIntoView({behavior:'smooth', block:'start'}); };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function fullReset(){
+    workspace.classList.remove('active');
+    fileInput.value = '';
+    sourceImg = null;
+    resultCanvas = null;
+    scale = 2;
+    zoom = 1;
+    applyZoom();
+    var bctx = cvBefore.getContext('2d'), actx = cvAfter.getContext('2d');
+    bctx.clearRect(0, 0, cvBefore.width, cvBefore.height);
+    actx.clearRect(0, 0, cvAfter.width, cvAfter.height);
+    cvBefore.width = cvBefore.height = cvAfter.width = cvAfter.height = 0;
+    cvAfter.style.clipPath = 'inset(0 0 0 50%)';
+    slider.value = 50;
+    handle.style.left = '50%';
+    sharpenSlider.value = 35;
+    sharpenVal.textContent = '35%';
+    [].forEach.call(scaleGroup.children, function(b){ b.setAttribute('aria-pressed', b.dataset.scale === '2'); });
+    origSizeEl.textContent = '–';
+    newSizeEl.textContent = '–';
+    dropzone.scrollIntoView({behavior:'smooth'});
+  }
+  resetBtn.addEventListener('click', fullReset);
+
+  /* ---------- Scale + sharpen controls ---------- */
+  scaleGroup.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if(!btn) return;
+    scale = parseInt(btn.dataset.scale, 10);
+    [].forEach.call(scaleGroup.children, function(b){ b.setAttribute('aria-pressed', b === btn); });
+    process();
+  });
+  sharpenSlider.addEventListener('input', function(){ sharpenVal.textContent = sharpenSlider.value + '%'; });
+  sharpenSlider.addEventListener('change', process);
+
+  /* ---------- Compare slider ---------- */
+  function updateHandle(){
+    var v = slider.value;
+    cvAfter.style.clipPath = 'inset(0 0 0 ' + v + '%)';
+    handle.style.left = v + '%';
+  }
+  slider.addEventListener('input', updateHandle);
+
+  /* ---------- Core: multi-step resample + unsharp mask ---------- */
+  function stepUpscale(img, targetW, targetH){
+    var cw = img.naturalWidth || img.width, ch = img.naturalHeight || img.height;
+    var cur = document.createElement('canvas'); cur.width = cw; cur.height = ch;
+    cur.getContext('2d').drawImage(img, 0, 0);
+    while(cw < targetW){
+      var nw = Math.min(targetW, Math.round(cw * 2));
+      var nh = Math.round(ch * (nw / cw));
+      var next = document.createElement('canvas'); next.width = nw; next.height = nh;
+      var ctx = next.getContext('2d');
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(cur, 0, 0, nw, nh);
+      cur = next; cw = nw; ch = nh;
+    }
+    return cur;
+  }
+
+  function unsharpMask(canvas, amount){
+    if(amount <= 0) return canvas;
+    var w = canvas.width, h = canvas.height, ctx = canvas.getContext('2d');
+    var src = ctx.getImageData(0, 0, w, h), data = src.data;
+    var copy = new Uint8ClampedArray(data);
+    var k = amount / 100 * 1.4;
+    var kernel = [0,-1,0, -1, 4 + 4*0, -1, 0,-1,0]; // laplacian-based edge term
+    for(var y = 1; y < h - 1; y++){
+      for(var x = 1; x < w - 1; x++){
+        var i = (y * w + x) * 4;
+        for(var c = 0; c < 3; c++){
+          var center = copy[i + c];
+          var lap = center * 4 - copy[i - 4 + c] - copy[i + 4 + c] - copy[i - w*4 + c] - copy[i + w*4 + c];
+          var val = center + lap * k * 0.25;
+          data[i + c] = val < 0 ? 0 : (val > 255 ? 255 : val);
+        }
+      }
+    }
+    ctx.putImageData(src, 0, 0);
+    return canvas;
+  }
+
+  function process(){
+    if(!sourceImg) return;
+    var ow = sourceImg.naturalWidth, oh = sourceImg.naturalHeight;
+    var tw = Math.round(ow * scale), th = Math.round(oh * scale);
+
+    // Before canvas: stretch original to target size with default (bilinear) smoothing for honest comparison
+    cvBefore.width = tw; cvBefore.height = th;
+    var bctx = cvBefore.getContext('2d');
+    bctx.imageSmoothingEnabled = true; bctx.imageSmoothingQuality = 'medium';
+    bctx.drawImage(sourceImg, 0, 0, tw, th);
+
+    // After: progressive high-quality resample + unsharp mask
+    var big = stepUpscale(sourceImg, tw, th);
+    unsharpMask(big, parseInt(sharpenSlider.value, 10));
+    cvAfter.width = tw; cvAfter.height = th;
+    cvAfter.getContext('2d').drawImage(big, 0, 0);
+    resultCanvas = big;
+
+    origSizeEl.textContent = ow + ' × ' + oh;
+    newSizeEl.textContent = tw + ' × ' + th;
+    updateHandle();
+  }
+
+  /* ---------- Download ---------- */
+  downloadBtn.addEventListener('click', function(){
+    if(!resultCanvas){ return; }
+    try{
+      var dataUrl = resultCanvas.toDataURL('image/png');
+      var a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'spasht-upscaled-' + scale + 'x.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }catch(err){
+      alert('Could not generate the download. Please try a smaller image or lower scale.');
+    }
+  });
+  /* ---------- PWA: service worker ---------- */
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
+  }
+})();
+</script>
+</body>
+</html>
